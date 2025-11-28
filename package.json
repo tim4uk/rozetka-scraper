@@ -1,4 +1,16 @@
-"scripts": {
-  "render-build": "./render-build.sh",
-  "start": "node index.js"
+{
+  "name": "rozetka-scraper",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "render-build": "npm install && npx puppeteer browsers install chrome"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer": "^23.5.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }
