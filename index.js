@@ -55,7 +55,7 @@ async function waitForDeliveriesResponses(page, minResponses = 1, maxWaitMs = 30
 async function bypassAndScrape(url) {
     let browser;
     try {
-        browser = await puppeteer.launch({
+        const browser = await puppeteer.launch({
           headless: 'new',
           args: [
             '--no-sandbox',
@@ -63,10 +63,11 @@ async function bypassAndScrape(url) {
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--single-process',
-            '--no-zygote'
-          ],
+            '--no-zygote',
+            '--disable-extensions'
+          ]
         });
-        
+    
         const page = await browser.newPage();
        
         // setUserAgent залишаємо, це часто допомагає уникнути блокування
