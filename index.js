@@ -55,16 +55,18 @@ async function waitForDeliveriesResponses(page, minResponses = 1, maxWaitMs = 30
 async function bypassAndScrape(url) {
     let browser;
     try {
-          browser = await puppeteer.launch({
-            headless: 'new',
-            executablePath: process.env.NODE_ENV === 'production' ? puppeteer.executablePath() : undefined,
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage',
-            ],
-          });
-
+        browser = await puppeteer.launch({
+          headless: 'new',
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+            '--no-zygote'
+          ],
+        });
+        
         const page = await browser.newPage();
        
         // setUserAgent залишаємо, це часто допомагає уникнути блокування
