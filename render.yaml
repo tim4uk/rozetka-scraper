@@ -1,3 +1,16 @@
-# Build Script
-npm install
-apt-get update && apt-get install -y libnss3
+# render.yaml
+services:
+  - type: web
+    name: rozetka-scraper
+    env: node
+    plan: starter
+    # Змінюємо buildCommand для встановлення системних залежностей та Puppeteer
+    buildCommand: |
+      # 1. Оновлення та встановлення системного Chromium і залежностей
+      apt-get update && apt-get install -y chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm-dev libgbm-dev libxkbcommon-dev libasound2
+      
+      # 2. Пропуск завантаження вбудованого Chromium під час npm install
+      # Якщо у вас в package.json є "puppeteer"
+      PUPPETEER_SKIP_DOWNLOAD=true npm install
+      
+    startCommand: node index.js
