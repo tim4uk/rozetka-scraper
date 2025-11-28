@@ -1,0 +1,4 @@
+"scripts": {
+  "render-build": "./render-build.sh",
+  "start": "node index.js"
+}
