@@ -49,7 +49,7 @@ async function bypassAndScrape(url) {
     try {
         browser = await puppeteer.launch({
             // Обов'язково вказуємо шлях до системного Chromium
-            executablePath: '/usr/bin/chromium', 
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
             headless: 'new', 
             args: [
                 '--no-sandbox',
