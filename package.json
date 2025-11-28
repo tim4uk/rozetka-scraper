@@ -1,15 +1,16 @@
 {
-  "name": "rozetka-scraper",
+  "name": "puppeteer-scraper",
   "version": "1.0.0",
+  "description": "Web scraper with Puppeteer on Render",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "puppeteer": "^23.5.3"
+    "express": "^4.18.2",
+    "puppeteer": "^21.6.0" 
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=18.0.0" 
   }
 }
