@@ -31,20 +31,18 @@ jobs:
         run: node parser.js "${{ github.event.client_payload.url }}"
         timeout-minutes: 10
       
-      - name: Read results
-        id: results
-        run: |
-          echo "results=$(cat results.json | jq -c .)" >> $GITHUB_OUTPUT
-      
-      - name: Comment results (якщо тригер з Issue)
-        if: github.event.client_payload.issue_number
-        uses: actions/github-script@v7
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
         with:
-          script: |
-            const results = ${{ steps.results.outputs.results }};
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.client_payload.issue_number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## Parse Results\n\`\`\`json\n${JSON.stringify(results, null, 2)}\n\`\`\``
-            })
+          name: parse-results-${{ github.run_id }}
+          path: results.json
+          retention-days: 7
+      
+      - name: Save to GitHub Gist (опціонально)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f results.json ]; then
+            gh gist create results.json --public --desc "Parse results $(date)"
+          fi
