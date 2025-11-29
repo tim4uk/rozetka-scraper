@@ -1,17 +1,9 @@
-
-const express = require('express');
 const puppeteer = require('puppeteer');
-
-const app = express();
-const PORT = process.env.PORT || 8080;
-
-app.use(express.json({ limit: '5mb' }));
 
 /**
  * Очікує появи N успішних відповідей на endpoint get-deliveries або до таймауту.
- * Повертає масив знайдених відповідей
+ * Повертає масив знайдених відповідей (об'єктів Response)
  */
-
 async function waitForDeliveriesResponses(page, minResponses = 1, maxWaitMs = 30000) {
     const responses = [];
     const start = Date.now();
@@ -20,14 +12,15 @@ async function waitForDeliveriesResponses(page, minResponses = 1, maxWaitMs = 30
         try {
             const url = res.url();
             // Фільтруємо лише успішні відповіді 200 на потрібний endpoint
-            if (url.includes('/v4/deliveries/get-deliveries') && res.status && res.status() === 200) {
+            if (url.includes('/v4/deliveries/get-deliveries') && res.status() === 200) {
                 responses.push(res);
             }
         } catch (e) {
-            // ignore
+            // ignore response handling errors
         }
     }
 
+    // Реєструємо слухача
     page.on('response', onResponse);
 
     // Полінг: чекати доки responses.length >= minResponses або таймаут
@@ -35,7 +28,9 @@ async function waitForDeliveriesResponses(page, minResponses = 1, maxWaitMs = 30
         if (responses.length >= minResponses) break;
         await new Promise(r => setTimeout(r, 300));
     }
-    page.off('response', onResponse); 
+    
+    // Видаляємо слухача, щоб він не впливав на наступні дії
+    page.off('response', onResponse);    
     return responses;
 }
 
@@ -43,24 +38,23 @@ async function waitForDeliveriesResponses(page, minResponses = 1, maxWaitMs = 30
  * Основна функція обходу та скрейпу.
  * Повертає масив URL-адрес запитів /v4/deliveries/get-deliveries.
  */
-
 async function bypassAndScrape(url) {
     let browser;
     try {
+        // Використовуємо опції, які покращують стабільність у контейнеризованих середовищах (як GitHub Actions)
         browser = await puppeteer.launch({
-            headless: 'new', 
+            headless: 'new', // Новий headless режим для кращої продуктивності
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage', 
                 '--disable-gpu',
-                '--no-zygote', // Додаткова опція для стабільності в контейнерах
+                '--no-zygote', 
             ],
         });
 
         const page = await browser.newPage();
         
-        // setUserAgent залишаємо, це часто допомагає уникнути блокування
         await page.setUserAgent(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
             '(KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36'
@@ -76,7 +70,7 @@ async function bypassAndScrape(url) {
         const finalUrl = url.includes('#all_sellers') ? url : url + '#all_sellers';
         console.log(`[INFO] Loading: ${finalUrl}`);
 
-        // Використовуємо 'domcontentloaded' замість 'networkidle2' для прискорення
+        // Використовуємо 'load' для очікування повного завантаження сторінки
         await page.goto(finalUrl, { waitUntil: 'load', timeout: 60000 });
         
         // 2. Чекаємо результати моніторингу
@@ -84,12 +78,12 @@ async function bypassAndScrape(url) {
 
         if (deliveriesResponses.length > 0) {
             console.log(`[SUCCESS] Caught ${deliveriesResponses.length} get-deliveries response(s).`);
+            // Отримуємо URL запиту
             deliveriesUrls = deliveriesResponses.map(res => res.request().url());
         } else {
             console.warn('[WARN] No get-deliveries responses caught within timeout.');
         }
 
-        // Повертаємо масив URL-адрес
         return deliveriesUrls;
 
     } catch (error) {
@@ -106,23 +100,31 @@ async function bypassAndScrape(url) {
     }
 }
 
-// POST endpoint (залишається без змін)
-app.post('/', async (req, res) => {
-    const targetUrl = req.body && req.body.url;
-    
+/**
+ * Точка входу: читає URL з командного рядка та виводить результат у JSON.
+ */
+async function main() {
+    // URL очікується як другий аргумент (process.argv[2])
+    const targetUrl = process.argv[2];
+
     if (!targetUrl) {
-        return res.status(400).send({ error: 'Потрібен параметр "url".' });
+        // Якщо URL не надано, виводимо помилку
+        console.error("ERROR: Please provide a URL as an argument.");
+        console.log(JSON.stringify({ error: 'Потрібен параметр "url" (не передано через командний рядок).' }));
+        process.exit(1);
+        return;
     }
 
     const result = await bypassAndScrape(targetUrl);
 
     if (typeof result === 'object' && result !== null && result.error) {
-        return res.status(500).send(result);
+        // Вивід помилки у JSON
+        console.log(JSON.stringify(result));
+        process.exit(1);
     }
     
-    res.status(200).send({ urls: result });
-});
+    // Вивід успішного результату у JSON
+    console.log(JSON.stringify({ urls: result }));
+}
 
-app.listen(PORT, () => {
-    console.log(`[INFO] Cloud Run Scraper Service listening on port ${PORT}`);
-});
+main();
