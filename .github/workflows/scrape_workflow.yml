@@ -1,5 +1,5 @@
-# .github/workflows/scrape.yml
-name: Scrape Rozetka Deliveries
+# .github/workflows/rozetka-deliveries.yml
+name: Rozetka – Get Deliveries URLs
 
 on:
   workflow_dispatch:
@@ -12,21 +12,22 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    outputs:
+      urls: ${{ steps.result.outputs.urls }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install latest Chrome + Puppeteer
-        run: |
-          npm install puppeteer@latest
+      - name: Install Puppeteer 24+
+        run: npm install puppeteer@latest
 
       - name: Run scraper
-        id: scrape
+        id: result
         env:
           TARGET_URL: ${{ inputs.url }}
         run: |
@@ -52,40 +53,42 @@ jobs:
 
             const deliveries = [];
 
-            page.on("response", async (response) => {
-              const reqUrl = response.url();
-              if (reqUrl.includes("/v4/deliveries/get-deliveries") && response.status() === 200) {
-                deliveries.push(reqUrl);
+            page.on("response", res => {
+              const u = res.url();
+              if (u.includes("/v4/deliveries/get-deliveries") && res.status() === 200) {
+                deliveries.push(u);
               }
             });
 
             const finalUrl = url.includes("#all_sellers") ? url : url + "#all_sellers";
+            console.log("Завантажуємо:", finalUrl);
 
             await page.goto(finalUrl, { waitUntil: "load", timeout: 60000 });
 
-            // чекаємо трохи, бо XHR приходить з затримкою
-            await page.waitForTimeout(12000);
+            // правильна затримка для Puppeteer 24+
+            await new Promise(r => setTimeout(r, 14000));
 
             await browser.close();
 
             const unique = [...new Set(deliveries)];
 
             if (unique.length === 0) {
-              console.log("ПОМИЛКА: не вдалося зловити get-deliveries запит");
+              console.log("ПОМИЛКА: не знайдено жодного запиту get-deliveries");
               process.exit(1);
             }
 
-            console.log("Знайдені прямі посилання на доставку:");
+            console.log("\nЗнайдено", unique.length, "прямих посилань:");
             unique.forEach(u => console.log(u));
 
-            // виводимо у форматі, який можна забрати через outputs
             console.log("::set-output name=urls::" + JSON.stringify(unique));
-          })().catch(err => {
-            console.error("Критична помилка:", err.message);
+          })().catch(e => {
+            console.error("Критична помилка:", e.message);
             process.exit(1);
           });
           '
 
-      - name: Show result
+      - name: Результат
         run: |
-          echo "Готово! Знайдено ${{ steps.scrape.outputs.urls != '' && 'URL-и' || '0 URL-ів' }}"
+          echo "Готово за ~20 секунд!"
+          echo "Знайдені прямі API-запити:"
+          echo '${{ steps.result.outputs.urls }}' | jq -r '.[]'
