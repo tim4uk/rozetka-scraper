@@ -1,33 +1,29 @@
 # .github/workflows/scrape.yml
-name: Scrape Delivery URLs
+name: Scrape Rozetka Deliveries
 
 on:
   workflow_dispatch:
     inputs:
       url:
-        description: 'URL сторінки з #all_sellers'
+        description: 'Посилання на товар Rozetka (наприклад https://rozetka.com.ua/ua/.../p123456789/)'
         required: true
         type: string
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    outputs:
-      urls: ${{ steps.scrape.outputs.urls }}
-      error: ${{ steps.scrape.outputs.error }}
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
-      - name: Install dependencies
+      - name: Install latest Chrome + Puppeteer
         run: |
-          npm install puppeteer express
+          npm install puppeteer@latest
 
       - name: Run scraper
         id: scrape
@@ -36,7 +32,7 @@ jobs:
         run: |
           node -e '
           const puppeteer = require("puppeteer");
-          const url = process.env.TARGET_URL;
+          const url = process.env.TARGET_URL.trim();
 
           (async () => {
             const browser = await puppeteer.launch({
@@ -47,46 +43,49 @@ jobs:
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--no-zygote",
-                "--single-process", // критично важливо на GitHub Actions!
-              ],
+                "--single-process"
+              ]
             });
 
             const page = await browser.newPage();
-            await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36");
+            await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
 
-            const responses = [];
-            page.on("response", async (res) => {
-              const reqUrl = res.url();
-              if (reqUrl.includes("/v4/deliveries/get-deliveries") && res.status() === 200) {
-                responses.push(reqUrl);
+            const deliveries = [];
+
+            page.on("response", async (response) => {
+              const reqUrl = response.url();
+              if (reqUrl.includes("/v4/deliveries/get-deliveries") && response.status() === 200) {
+                deliveries.push(reqUrl);
               }
             });
 
-            try {
-              await page.goto(url.includes("#all_sellers") ? url : url + "#all_sellers", {
-                { waitUntil: "load", timeout: 60000 });
-              await page.waitForTimeout(8000); // чекаємо підвантаження XHR
+            const finalUrl = url.includes("#all_sellers") ? url : url + "#all_sellers";
 
-              const uniqueUrls = [...new Set(responses)];
-              console.log("Знайдено URL:", uniqueUrls);
+            await page.goto(finalUrl, { waitUntil: "load", timeout: 60000 });
 
-              if (uniqueUrls.length === 0) {
-                console.log("::set-output name=error::Не вдалося отримати get-deliveries запити");
-                process.exit(1);
-              }
+            // чекаємо трохи, бо XHR приходить з затримкою
+            await page.waitForTimeout(12000);
 
-              console.log("::set-output name=urls::" + JSON.stringify(uniqueUrls));
-            } catch (e) {
-              console.error("Помилка:", e.message);
-              console.log("::set-output name=error::" + e.message);
+            await browser.close();
+
+            const unique = [...new Set(deliveries)];
+
+            if (unique.length === 0) {
+              console.log("ПОМИЛКА: не вдалося зловити get-deliveries запит");
               process.exit(1);
-            } finally {
-              await browser.close();
             }
-          })();
+
+            console.log("Знайдені прямі посилання на доставку:");
+            unique.forEach(u => console.log(u));
+
+            // виводимо у форматі, який можна забрати через outputs
+            console.log("::set-output name=urls::" + JSON.stringify(unique));
+          })().catch(err => {
+            console.error("Критична помилка:", err.message);
+            process.exit(1);
+          });
           '
 
-      - name: Output result
+      - name: Show result
         run: |
-          echo "Знайдені URL:"
-          echo '${{ steps.scrape.outputs.urls }}' | jq -r '.[]'
+          echo "Готово! Знайдено ${{ steps.scrape.outputs.urls != '' && 'URL-и' || '0 URL-ів' }}"
