@@ -1,0 +1,16 @@
+{
+  "name": "rozetka-scraper",
+  "version": "1.0.0",
+  "description": "Puppeteer scraper for deliveries data",
+  "main": "parser.js",
+  "scripts": {
+    "start": "node parser.js",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": ["puppeteer", "scraper", "parser"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  }
+}
