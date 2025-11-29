@@ -1,51 +1,92 @@
-name: Parse on Demand
+# .github/workflows/scrape.yml
+name: Scrape Delivery URLs
 
 on:
-  repository_dispatch:
-    types: [parse_deliveries]
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL сторінки з #all_sellers'
+        required: true
+        type: string
 
 jobs:
-  parse:
+  scrape:
     runs-on: ubuntu-latest
-    
+    outputs:
+      urls: ${{ steps.scrape.outputs.urls }}
+      error: ${{ steps.scrape.outputs.error }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-      
-      - name: Cache dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.npm
-            ~/.cache/puppeteer
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-      
+          node-version: '20'
+
       - name: Install dependencies
-        run: npm install
-      
-      - name: Run parser
-        run: node parser.js "${{ github.event.client_payload.url }}"
-        timeout-minutes: 10
-      
-      - name: Upload results as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: parse-results-${{ github.run_id }}
-          path: results.json
-          retention-days: 7
-      
-      - name: Save to GitHub Gist (опціонально)
-        if: always()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f results.json ]; then
-            gh gist create results.json --public --desc "Parse results $(date)"
-          fi
+          npm install puppeteer express
+
+      - name: Run scraper
+        id: scrape
+        env:
+          TARGET_URL: ${{ inputs.url }}
+        run: |
+          node -e '
+          const puppeteer = require("puppeteer");
+          const url = process.env.TARGET_URL;
+
+          (async () => {
+            const browser = await puppeteer.launch({
+              headless: true,
+              args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--no-zygote",
+                "--single-process", // критично важливо на GitHub Actions!
+              ],
+            });
+
+            const page = await browser.newPage();
+            await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36");
+
+            const responses = [];
+            page.on("response", async (res) => {
+              const reqUrl = res.url();
+              if (reqUrl.includes("/v4/deliveries/get-deliveries") && res.status() === 200) {
+                responses.push(reqUrl);
+              }
+            });
+
+            try {
+              await page.goto(url.includes("#all_sellers") ? url : url + "#all_sellers", {
+                { waitUntil: "load", timeout: 60000 });
+              await page.waitForTimeout(8000); // чекаємо підвантаження XHR
+
+              const uniqueUrls = [...new Set(responses)];
+              console.log("Знайдено URL:", uniqueUrls);
+
+              if (uniqueUrls.length === 0) {
+                console.log("::set-output name=error::Не вдалося отримати get-deliveries запити");
+                process.exit(1);
+              }
+
+              console.log("::set-output name=urls::" + JSON.stringify(uniqueUrls));
+            } catch (e) {
+              console.error("Помилка:", e.message);
+              console.log("::set-output name=error::" + e.message);
+              process.exit(1);
+            } finally {
+              await browser.close();
+            }
+          })();
+          '
+
+      - name: Output result
+        run: |
+          echo "Знайдені URL:"
+          echo '${{ steps.scrape.outputs.urls }}' | jq -r '.[]'
